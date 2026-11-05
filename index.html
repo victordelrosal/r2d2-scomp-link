@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Astromech Scomp Link Terminal Interface</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #030712;
+      font-family: 'Share Tech Mono', monospace;
+      user-select: none;
+      overflow: hidden;
+    }
+    .font-hud {
+      font-family: 'Orbitron', sans-serif;
+    }
+    /* Glow utilities */
+    .glow-cyan {
+      filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.7)) drop-shadow(0 0 20px rgba(6, 182, 212, 0.3));
+    }
+    .glow-amber {
+      filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.7));
+    }
+    .glow-blue {
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.5), inset 0 0 15px rgba(59, 130, 246, 0.2);
+    }
+    /* CRT Scanline overlay */
+    .scanlines {
+      background: linear-gradient(
+        to bottom,
+        rgba(255,255,255,0),
+        rgba(255,255,255,0) 50%,
+        rgba(0, 0, 0, 0.25) 50%,
+        rgba(0, 0, 0, 0.25)
+      );
+      background-size: 100% 4px;
+      pointer-events: none;
+    }
+    /* Custom Range styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: #1f2937;
+      height: 6px;
+      border-radius: 3px;
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #06b6d4;
+      cursor: pointer;
+      box-shadow: 0 0 8px #06b6d4;
+      border: 1px solid #fff;
+    }
+  </style>
+</head>
+<body class="w-screen h-screen flex items-center justify-center p-2 sm:p-4 bg-slate-950">
+
+  <!-- 16:9 Aspect Ratio Master Container -->
+  <div class="relative w-full max-w-[1280px] aspect-video max-h-[96vh] rounded-2xl overflow-hidden border border-cyan-900/60 shadow-[0_0_50px_rgba(6,182,212,0.15)] bg-radial from-slate-900 via-slate-950 to-black flex flex-col justify-between">
+    
+    <!-- Canvas for 2D Rendered Scomp Link & Mainframe Port -->
+    <canvas id="stageCanvas" class="absolute inset-0 w-full h-full block z-0 cursor-crosshair"></canvas>
+
+    <!-- Scanline effect for retro sci-fi CRT feeling -->
+    <div class="scanlines absolute inset-0 z-10 pointer-events-none opacity-40"></div>
+
+    <!-- HUD Overlay Header -->
+    <header class="relative z-20 flex items-center justify-between px-6 py-3 border-b border-cyan-800/40 bg-slate-950/70 backdrop-blur-sm">
+      <div class="flex items-center space-x-3">
+        <div class="w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
+        <div>
+          <span class="font-hud text-xs tracking-widest text-cyan-500 block uppercase">Industrial Automaton // R2 Series</span>
+          <h1 class="font-hud text-sm md:text-base font-bold text-slate-100 tracking-wider flex items-center gap-2">
+            ASTROMECH SCOMP LINK <span class="text-xs px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 font-mono">MODEL IAC-88</span>
+          </h1>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-6 text-xs text-slate-400">
+        <div class="hidden sm:flex flex-col text-right">
+          <span class="text-[10px] uppercase tracking-wider text-slate-500">Security Clearance</span>
+          <span id="clearanceText" class="text-emerald-400 font-bold">LEVEL 4 // REBEL ENCRYPT</span>
+        </div>
+        <div class="flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
+          <span class="w-2.5 h-2.5 rounded-full" id="statusLed"></span>
+          <span id="connStatus" class="font-hud tracking-wider text-xs text-slate-300">DISENGAGED</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Center HUD Diagnostics Reticle -->
+    <div class="relative z-20 pointer-events-none flex-1 flex items-center justify-between px-6 sm:px-10">
+      <!-- Left Terminal Telemetry -->
+      <div class="hidden md:flex flex-col space-y-2 w-56 text-[11px] text-cyan-400/80 bg-slate-950/60 p-3 rounded-xl border border-cyan-950 backdrop-blur-sm pointer-events-auto">
+        <div class="flex justify-between items-center text-[10px] border-b border-cyan-900/40 pb-1 text-slate-400">
+          <span>PORT TELEMETRY</span>
+          <span class="animate-pulse text-cyan-400">LIVE</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">BUS VOLTAGE:</span>
+          <span id="telemetryVolt" class="font-mono text-cyan-300">24.2 VDC</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">BIT ORIENT:</span>
+          <span id="telemetryAngle" class="font-mono text-cyan-300">0.0°</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">ENGAGEMENT:</span>
+          <span id="telemetryDepth" class="font-mono text-cyan-300">0%</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">DATA TRANSFER:</span>
+          <span id="telemetryBps" class="font-mono text-emerald-400">0.00 KB/s</span>
+        </div>
+        <div class="pt-1 border-t border-cyan-900/30 text-[9px] text-slate-400 leading-tight">
+          AUREBESH PROTOCOL SYNCHRONIZED. BYPASS CIPHER ACTIVE.
+        </div>
+      </div>
+
+      <!-- Right Side Live Log Stream -->
+      <div class="hidden md:flex flex-col w-64 h-36 bg-slate-950/60 p-3 rounded-xl border border-cyan-950 backdrop-blur-sm text-[10px] text-slate-400 overflow-hidden pointer-events-auto">
+        <div class="text-[10px] border-b border-cyan-900/40 pb-1 mb-1 text-slate-400 flex justify-between">
+          <span>INTERFACE LOG</span>
+          <span class="text-cyan-500 font-mono">TTY_07</span>
+        </div>
+        <div id="logConsole" class="flex flex-col-reverse h-full overflow-hidden space-y-reverse space-y-1 font-mono text-[9px] text-slate-300">
+          <div class="text-cyan-400/70">&gt; Astromech computer arm armed. Ready.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Control Deck Footer -->
+    <footer class="relative z-20 px-6 py-4 bg-slate-950/85 border-t border-cyan-900/50 backdrop-blur-md flex flex-wrap items-center justify-between gap-4">
+      <!-- Main Action Buttons -->
+      <div class="flex items-center gap-3">
+        <button id="toggleInsertBtn" class="px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 active:scale-95 text-white font-hud text-xs tracking-wider font-bold shadow-lg shadow-cyan-600/30 transition-all flex items-center gap-2 border border-cyan-400/30">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M11 4v10.17l-3.59-3.58L6 12l6 6 6-6-1.41-1.41L13 14.17V4h-2zM4 20h16v2H4v-2z"/></svg>
+          <span id="toggleInsertLabel">INSERT SCOMP</span>
+        </button>
+
+        <button id="hackBtn" class="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 active:scale-95 text-cyan-400 hover:text-cyan-200 font-hud text-xs tracking-wider border border-cyan-500/40 transition-all flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <span>TRANSMIT / BYPASS</span>
+        </button>
+
+        <button id="audioToggleBtn" class="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 border border-slate-800 transition">
+          <svg id="soundIcon" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Live Sliders & Micro Adjustments -->
+      <div class="flex items-center gap-6 text-xs text-slate-300">
+        <!-- Key Bit Orientation Slider -->
+        <div class="flex items-center gap-3">
+          <label for="rotSlider" class="text-slate-400 text-[11px] whitespace-nowrap">PIN ROTATION</label>
+          <input type="range" id="rotSlider" min="0" max="360" value="45" class="w-24 sm:w-32 cursor-pointer">
+          <span id="rotValue" class="text-cyan-400 font-mono w-9">45°</span>
+        </div>
+
+        <!-- View Angle / Orbit -->
+        <div class="hidden lg:flex items-center gap-3">
+          <label for="viewModeBtn" class="text-slate-400 text-[11px]">DISPLAY MODE</label>
+          <div class="flex rounded-md bg-slate-900 p-0.5 border border-slate-800 text-[10px]">
+            <button id="viewProfile" class="px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 font-bold">ISOMETRIC</button>
+            <button id="viewFrontal" class="px-2.5 py-1 rounded text-slate-400 hover:text-white">FRONTAL</button>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    /* =======================================================================
+       1. SYNTHESIZED WEB AUDIO (R2-D2 Whistles, Mechanical Servo, Clicks)
+       ======================================================================= */
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let audioEnabled = true;
+
+    function playServoSound(duration = 0.5, pitchMod = 1) {
+      if (!audioEnabled || audioCtx.state === 'suspended') return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(140 * pitchMod, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(180 * pitchMod, audioCtx.currentTime + duration * 0.5);
+        osc.frequency.linearRampToValueAtTime(110 * pitchMod, audioCtx.currentTime + duration);
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, audioCtx.currentTime);
+
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function playClickSound() {
+      if (!audioEnabled || audioCtx.state === 'suspended') return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.04);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.04);
+      } catch (e) {}
+    }
+
+    // Iconic R2-D2 synthesized frequency modulated warble
+    function playR2Chirp(mood = 'happy') {
+      if (!audioEnabled || audioCtx.state === 'suspended') return;
+      try {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+
+        if (mood === 'connect') {
+          osc.frequency.setValueAtTime(650, now);
+          osc.frequency.linearRampToValueAtTime(1200, now + 0.08);
+          osc.frequency.linearRampToValueAtTime(900, now + 0.16);
+          osc.frequency.linearRampToValueAtTime(1600, now + 0.28);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.35);
+        } else if (mood === 'data') {
+          // Rapid electronic chirps
+          for (let i = 0; i < 4; i++) {
+            const stepOsc = audioCtx.createOscillator();
+            const stepGain = audioCtx.createGain();
+            stepOsc.type = (i % 2 === 0) ? 'sine' : 'square';
+            const baseFreq = 900 + Math.random() * 800;
+            stepOsc.frequency.setValueAtTime(baseFreq, now + i * 0.07);
+            stepOsc.frequency.linearRampToValueAtTime(baseFreq + (Math.random() - 0.5) * 600, now + (i + 1) * 0.07);
+            stepGain.gain.setValueAtTime(0.05, now + i * 0.07);
+            stepGain.gain.linearRampToValueAtTime(0.001, now + (i + 1) * 0.07);
+            stepOsc.connect(stepGain);
+            stepGain.connect(audioCtx.destination);
+            stepOsc.start(now + i * 0.07);
+            stepOsc.stop(now + (i + 1) * 0.07);
+          }
+        }
+      } catch (e) {}
+    }
+
+    /* =======================================================================
+       2. GRAPHICS & SIMULATION STATE
+       ======================================================================= */
+    const canvas = document.getElementById('stageCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // UI Bindings
+    const toggleInsertBtn = document.getElementById('toggleInsertBtn');
+    const toggleInsertLabel = document.getElementById('toggleInsertLabel');
+    const hackBtn = document.getElementById('hackBtn');
+    const rotSlider = document.getElementById('rotSlider');
+    const rotValue = document.getElementById('rotValue');
+    const statusLed = document.getElementById('statusLed');
+    const connStatus = document.getElementById('connStatus');
+    const logConsole = document.getElementById('logConsole');
+    const viewProfile = document.getElementById('viewProfile');
+    const viewFrontal = document.getElementById('viewFrontal');
+    const telemetryVolt = document.getElementById('telemetryVolt');
+    const telemetryAngle = document.getElementById('telemetryAngle');
+    const telemetryDepth = document.getElementById('telemetryDepth');
+    const telemetryBps = document.getElementById('telemetryBps');
+    const audioToggleBtn = document.getElementById('audioToggleBtn');
+
+    // State Variables
+    let isInserted = false;
+    let extensionProgress = 0.0; // 0 to 1
+    let targetExtension = 0.0;
+    let bitAngle = 45; // Degrees
+    let bitSpinVelocity = 0;
+    let isTransmitting = false;
+    let transmitTimer = 0;
+    let viewMode = 'isometric'; // 'isometric' or 'frontal'
+    let dataPackets = [];
+    let sparks = [];
+    let stars = [];
+    let mainframeRingsRotation = 0;
+
+    // Initialize Starfield / Background Grid Elements
+    function initBackground() {
+      stars = [];
+      for (let i = 0; i < 70; i++) {
+        stars.push({
+          x: Math.random(),
+          y: Math.random(),
+          size: Math.random() * 1.8 + 0.4,
+          alpha: Math.random() * 0.7 + 0.3,
+          speed: Math.random() * 0.0003 + 0.0001
+        });
+      }
+    }
+    initBackground();
+
+    // Logger
+    function logEvent(msg, highlight = false) {
+      const entry = document.createElement('div');
+      entry.className = highlight ? 'text-cyan-300 font-semibold' : 'text-slate-400';
+      const time = new Date().toTimeString().split(' ')[0];
+      entry.innerText = `[${time}] ${msg}`;
+      logConsole.insertBefore(entry, logConsole.firstChild);
+      if (logConsole.children.length > 20) {
+        logConsole.removeChild(logConsole.lastChild);
+      }
+    }
+
+    /* Resize canvas responsively matching CSS layout */
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    /* =======================================================================
+       3. INTERACTIVE CONTROLS
+       ======================================================================= */
+    function toggleInsertion() {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      isInserted = !isInserted;
+      targetExtension = isInserted ? 1.0 : 0.0;
+
+      if (isInserted) {
+        toggleInsertLabel.innerText = 'RETRACT SCOMP';
+        toggleInsertBtn.className = toggleInsertBtn.className.replace('from-cyan-600 to-blue-600', 'from-amber-600 to-red-600');
+        logEvent('Probe arm deploying toward mainframe terminal...');
+        playServoSound(0.7, 1.2);
+      } else {
+        toggleInsertLabel.innerText = 'INSERT SCOMP';
+        toggleInsertBtn.className = toggleInsertBtn.className.replace('from-amber-600 to-red-600', 'from-cyan-600 to-blue-600');
+        isTransmitting = false;
+        logEvent('Retracting Scomp probe into astromech casing.');
+        playServoSound(0.6, 0.9);
+      }
+    }
+
+    toggleInsertBtn.addEventListener('click', toggleInsertion);
+
+    hackBtn.addEventListener('click', () => {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (extensionProgress < 0.85) {
+        // Automatically extend if user clicks bypass while disengaged
+        toggleInsertion();
+      }
+      isTransmitting = true;
+      transmitTimer = 180; // 3 seconds at 60fps
+      bitSpinVelocity = 18;
+      playR2Chirp('data');
+      logEvent('Bypassing Imperial Security Core: 0x7F-AA9...', true);
+    });
+
+    rotSlider.addEventListener('input', (e) => {
+      bitAngle = parseFloat(e.target.value);
+      rotValue.innerText = `${Math.round(bitAngle)}°`;
+      telemetryAngle.innerText = `${Math.round(bitAngle)}.0°`;
+    });
+
+    viewProfile.addEventListener('click', () => {
+      viewMode = 'isometric';
+      viewProfile.className = 'px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 font-bold';
+      viewFrontal.className = 'px-2.5 py-1 rounded text-slate-400 hover:text-white';
+    });
+
+    viewFrontal.addEventListener('click', () => {
+      viewMode = 'frontal';
+      viewFrontal.className = 'px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 font-bold';
+      viewProfile.className = 'px-2.5 py-1 rounded text-slate-400 hover:text-white';
+    });
+
+    audioToggleBtn.addEventListener('click', () => {
+      audioEnabled = !audioEnabled;
+      audioToggleBtn.classList.toggle('text-cyan-400', audioEnabled);
+      audioToggleBtn.classList.toggle('text-slate-600', !audioEnabled);
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    });
+
+    /* =======================================================================
+       4. DRAWING UTILITIES
+       ======================================================================= */
+    
+    // Draw metallic cylindrical gradient for probe segments
+    function drawCylinder(ctx, x, y, width, height, radius = 0, isKey = false) {
+      ctx.save();
+      const grad = ctx.createLinearGradient(x, y, x, y + height);
+      if (isKey) {
+        // High-tech dark anodized steel & copper
+        grad.addColorStop(0.0, '#334155');
+        grad.addColorStop(0.25, '#94a3b8');
+        grad.addColorStop(0.5, '#475569');
+        grad.addColorStop(0.8, '#1e293b');
+        grad.addColorStop(1.0, '#0f172a');
+      } else {
+        // Iconic Astromech Chrome / Machined Aluminum finish
+        grad.addColorStop(0.0, '#475569');
+        grad.addColorStop(0.18, '#cbd5e1');
+        grad.addColorStop(0.35, '#ffffff');
+        grad.addColorStop(0.65, '#94a3b8');
+        grad.addColorStop(0.85, '#334155');
+        grad.addColorStop(1.0, '#0f172a');
+      }
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (radius > 0) {
+        ctx.roundRect(x, y, width, height, radius);
+      } else {
+        ctx.rect(x, y, width, height);
+      }
+      ctx.fill();
+
+      // Subtle metallic highlight stroke
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /* Spawn data pulse packet */
+    function spawnDataPulse(x, y, targetX, targetY) {
+      dataPackets.push({
+        x, y, targetX, targetY,
+        progress: 0,
+        speed: 0.035 + Math.random() * 0.02,
+        color: Math.random() > 0.4 ? '#38bdf8' : '#34d399',
+        glyph: String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96)) // Aurebesh/Katakana aesthetic
+      });
+    }
+
+    /* =======================================================================
+       5. MAIN ANIMATION & RENDERING LOOP
+       ======================================================================= */
+    let lastTime = performance.now();
+
+    function renderLoop(time) {
+      const dt = (time - lastTime) / 1000;
+      lastTime = time;
+
+      resizeCanvas();
+      const w = canvas.width;
+      const h = canvas.height;
+
+      // Smooth extension interpolation
+      const prevExt = extensionProgress;
+      extensionProgress += (targetExtension - extensionProgress) * 0.08;
+
+      // Check click lock-in
+      if (prevExt < 0.95 && extensionProgress >= 0.95 && targetExtension === 1.0) {
+        playClickSound();
+        playR2Chirp('connect');
+        logEvent('Mechanical lock engaged. Bus synced.', true);
+        // Create small interface spark
+        for (let i = 0; i < 8; i++) {
+          sparks.push({
+            x: w * 0.65, y: h * 0.5,
+            vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
+            life: 1.0, color: '#38bdf8'
+          });
+        }
+      }
+
+      // Bit rotational inertia
+      if (Math.abs(bitSpinVelocity) > 0.05) {
+        bitAngle = (bitAngle + bitSpinVelocity) % 360;
+        bitSpinVelocity *= 0.92;
+        rotSlider.value = bitAngle;
+        rotValue.innerText = `${Math.round(bitAngle)}°`;
+        telemetryAngle.innerText = `${Math.round(bitAngle)}.0°`;
+      }
+
+      // Transmitting state decay
+      if (isTransmitting) {
+        transmitTimer--;
+        if (transmitTimer % 6 === 0) {
+          telemetryBps.innerText = `${(250 + Math.random() * 580).toFixed(2)} KB/s`;
+          telemetryVolt.innerText = `${(23.8 + Math.random() * 0.8).toFixed(1)} VDC`;
+        }
+        if (transmitTimer <= 0) {
+          isTransmitting = false;
+          telemetryBps.innerText = '0.00 KB/s';
+          logEvent('Data transfer / security payload delivered.');
+        }
+      }
+
+      // UI Indicators
+      const isLocked = extensionProgress > 0.92;
+      statusLed.className = `w-2.5 h-2.5 rounded-full ${isLocked ? (isTransmitting ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 shadow-[0_0_10px_#10b981]') : 'bg-slate-600'}`;
+      connStatus.innerText = isLocked ? (isTransmitting ? 'TRANSMITTING' : 'LOCKED // ONLINE') : (extensionProgress > 0.1 ? 'DOCKING...' : 'DISENGAGED');
+      connStatus.className = `font-hud tracking-wider text-xs ${isLocked ? (isTransmitting ? 'text-amber-400' : 'text-emerald-400') : 'text-slate-400'}`;
+      telemetryDepth.innerText = `${Math.round(extensionProgress * 100)}%`;
+
+      /* -----------------------------------------------------------------
+         RENDER BACKGROUND
+         ----------------------------------------------------------------- */
+      ctx.fillStyle = '#030712';
+      ctx.fillRect(0, 0, w, h);
+
+      // Sci-fi architectural grid
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.04)';
+      ctx.lineWidth = 1;
+      const gridSize = 40;
+      for (let x = 0; x < w; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      for (let y = 0; y < h; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      // Ambient Starfield
+      stars.forEach(s => {
+        s.y -= s.speed;
+        if (s.y < 0) s.y = 1;
+        ctx.fillStyle = `rgba(186, 230, 253, ${s.alpha})`;
+        ctx.fillRect(s.x * w, s.y * h, s.size, s.size);
+      });
+
+      // Background console glow
+      const radialGlow = ctx.createRadialGradient(w * 0.75, h * 0.5, 20, w * 0.75, h * 0.5, 300);
+      radialGlow.addColorStop(0, 'rgba(6, 182, 212, 0.15)');
+      radialGlow.addColorStop(0.6, 'rgba(14, 165, 233, 0.04)');
+      radialGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = radialGlow;
+      ctx.fillRect(0, 0, w, h);
+
+      mainframeRingsRotation += 0.008;
+
+      /* -----------------------------------------------------------------
+         RENDER SCENE BASED ON VIEW MODE
+         ----------------------------------------------------------------- */
+      if (viewMode === 'isometric') {
+        renderProfileView(w, h);
+      } else {
+        renderFrontalView(w, h);
+      }
+
+      /* -----------------------------------------------------------------
+         PARTICLES & DATA STREAM RENDERING
+         ----------------------------------------------------------------- */
+      // Render Sparks
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const sp = sparks[i];
+        sp.x += sp.vx;
+        sp.y += sp.vy;
+        sp.life -= 0.03;
+        ctx.fillStyle = sp.color;
+        ctx.shadowColor = sp.color;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        if (sp.life <= 0) sparks.splice(i, 1);
+      }
+
+      // Render Floating Data Packets
+      if (isTransmitting && Math.random() < 0.4) {
+        const startX = w * 0.68;
+        const startY = h * 0.5 + (Math.random() - 0.5) * 40;
+        const targetX = w * 0.28;
+        const targetY = h * 0.5 + (Math.random() - 0.5) * 30;
+        spawnDataPulse(startX, startY, targetX, targetY);
+      }
+
+      for (let i = dataPackets.length - 1; i >= 0; i--) {
+        const p = dataPackets[i];
+        p.progress += p.speed;
+        const curX = p.x + (p.targetX - p.x) * p.progress;
+        const curY = p.y + (p.targetY - p.y) * p.progress;
+
+        ctx.font = '11px monospace';
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 8;
+        ctx.fillText(p.glyph, curX, curY);
+        ctx.shadowBlur = 0;
+
+        if (p.progress >= 1.0) dataPackets.splice(i, 1);
+      }
+
+      requestAnimationFrame(renderLoop);
+    }
+
+    /* =======================================================================
+       6. LATERAL / TELESCOPIC INTERFACE VIEW (Primary Star Wars Movie Perspective)
+       ======================================================================= */
+    function renderProfileView(w, h) {
+      const centerY = h * 0.5;
+
+      // Mainframe Socket X Position
+      const socketX = w * 0.72;
+      const socketRadius = Math.min(w, h) * 0.28;
+
+      /* -------------------------------------------
+         A. IMPERIAL MAINFRAME TERMINAL WALL & PORT
+         ------------------------------------------- */
+      // Wall panel bevel
+      ctx.fillStyle = '#0b1120';
+      ctx.fillRect(socketX, centerY - socketRadius * 1.3, w - socketX, socketRadius * 2.6);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(socketX, centerY - socketRadius * 1.3, w - socketX, socketRadius * 2.6);
+
+      // Terminal Port Outer Housing Bevel
+      const portRimGrad = ctx.createLinearGradient(socketX - 40, centerY - socketRadius, socketX + 40, centerY + socketRadius);
+      portRimGrad.addColorStop(0, '#334155');
+      portRimGrad.addColorStop(0.5, '#64748b');
+      portRimGrad.addColorStop(1, '#0f172a');
+
+      ctx.fillStyle = portRimGrad;
+      ctx.beginPath();
+      ctx.ellipse(socketX, centerY, 40, socketRadius, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Deep Socket Interior (Black optical well)
+      const interiorGrad = ctx.createRadialGradient(socketX - 5, centerY, 5, socketX - 5, centerY, socketRadius * 0.85);
+      interiorGrad.addColorStop(0, '#020617');
+      interiorGrad.addColorStop(0.7, '#082f49');
+      interiorGrad.addColorStop(1, '#0369a1');
+
+      ctx.fillStyle = interiorGrad;
+      ctx.beginPath();
+      ctx.ellipse(socketX - 10, centerY, 30, socketRadius * 0.85, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Port Illuminated Internal Contact Slots
+      for (let i = 0; i < 8; i++) {
+        const slotAngle = (i / 8) * Math.PI * 2 + mainframeRingsRotation;
+        const slotY = centerY + Math.sin(slotAngle) * (socketRadius * 0.65);
+        const slotX = socketX - 12 + Math.cos(slotAngle) * 12;
+
+        ctx.fillStyle = isTransmitting ? (i % 2 === 0 ? '#38bdf8' : '#f59e0b') : '#0284c7';
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = isTransmitting ? 12 : 4;
+        ctx.beginPath();
+        ctx.arc(slotX, slotY, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      /* -------------------------------------------
+         B. R2-D2 DOME CASING / HATCH
+         ------------------------------------------- */
+      const r2HatchX = w * 0.12;
+      // White/Grey Astromech Armor Hull
+      const hullGrad = ctx.createLinearGradient(0, centerY - socketRadius * 1.2, r2HatchX, centerY + socketRadius * 1.2);
+      hullGrad.addColorStop(0, '#94a3b8');
+      hullGrad.addColorStop(0.3, '#f1f5f9');
+      hullGrad.addColorStop(0.7, '#cbd5e1');
+      hullGrad.addColorStop(1, '#475569');
+
+      ctx.fillStyle = hullGrad;
+      ctx.beginPath();
+      ctx.rect(0, centerY - socketRadius * 1.1, r2HatchX, socketRadius * 2.2);
+      ctx.fill();
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Iconic Cobalt Blue Astromech Decal Trim
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillRect(r2HatchX - 25, centerY - socketRadius * 0.8, 18, socketRadius * 1.6);
+
+      // Scomp Arm Hatch Port (Circular opening on R2's body)
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.ellipse(r2HatchX, centerY, 15, 60, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      /* -------------------------------------------
+         C. TELESCOPIC SCOMP LINK ARM ASSEMBLY
+         ------------------------------------------- */
+      // Segment 1 (Base Cylinder - Stays near body)
+      const seg1Width = 110;
+      const seg1Height = 44;
+      const seg1X = r2HatchX + 5;
+      drawCylinder(ctx, seg1X, centerY - seg1Height / 2, seg1Width, seg1Height, 4);
+
+      // Segment 1 Mechanical Ribs & Blue Ring
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(seg1X + 25, centerY - seg1Height / 2 - 1, 14, seg1Height + 2);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(seg1X + 60, centerY - seg1Height / 2 - 1, 8, seg1Height + 2);
+
+      // Total Travel Distance calculation
+      // Maximum extension brings the key bit deeply into socketX
+      const maxStroke = (socketX - (seg1X + seg1Width)) - 70;
+      const currentStroke = maxStroke * extensionProgress;
+
+      // Segment 2 (Mid Telescopic Shaft)
+      const seg2Width = 140;
+      const seg2Height = 30;
+      const seg2X = seg1X + seg1Width - 20 + currentStroke * 0.45;
+      drawCylinder(ctx, seg2X, centerY - seg2Height / 2, seg2Width, seg2Height, 2);
+
+      // Segment 3 (Precision Terminal Rod)
+      const seg3Width = 160;
+      const seg3Height = 18;
+      const seg3X = seg2X + seg2Width - 15 + currentStroke * 0.55;
+      drawCylinder(ctx, seg3X, centerY - seg3Height / 2, seg3Width, seg3Height, 2);
+
+      /* -------------------------------------------
+         D. ROTATING SCOMP KEY BIT & CONNECTOR COLLAR
+         ------------------------------------------- */
+      const keyCollarX = seg3X + seg3Width - 8;
+      const keyCollarHeight = 28;
+      drawCylinder(ctx, keyCollarX, centerY - keyCollarHeight / 2, 20, keyCollarHeight, 2, true);
+
+      // Scomp Terminal Interface Tip
+      const tipX = keyCollarX + 20;
+      const tipWidth = 32;
+      const tipHeight = 14;
+      drawCylinder(ctx, tipX, centerY - tipHeight / 2, tipWidth, tipHeight, 2, true);
+
+      // Mechanical Locking Prongs (Rotate visually based on bitAngle)
+      ctx.save();
+      const angleRad = (bitAngle * Math.PI) / 180;
+      const prongOffset = Math.sin(angleRad) * 16;
+      const prongScale = Math.cos(angleRad);
+
+      // Key Prong Top
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.roundRect(tipX + 6, centerY - 14 + prongOffset * 0.4, 18, 5 * Math.abs(prongScale) + 3, 2);
+      ctx.fill();
+
+      // Key Prong Bottom
+      ctx.beginPath();
+      ctx.roundRect(tipX + 6, centerY + 8 - prongOffset * 0.4, 18, 5 * Math.abs(prongScale) + 3, 2);
+      ctx.fill();
+
+      // Glowing Center Fiber-Optic Data Emitter
+      ctx.fillStyle = isTransmitting ? '#67e8f9' : '#0284c7';
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      ctx.arc(tipX + tipWidth, centerY, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      // Electrical connection glow when inserted
+      if (extensionProgress > 0.9) {
+        const glowAlpha = (extensionProgress - 0.9) * 10;
+        ctx.save();
+        ctx.fillStyle = `rgba(56, 189, 248, ${glowAlpha * (isTransmitting ? 0.6 : 0.25)})`;
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 25;
+        ctx.beginPath();
+        ctx.arc(tipX + tipWidth, centerY, 24, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      /* Wireframe Projection / Holographic HUD Ring around Socket */
+      ctx.save();
+      ctx.strokeStyle = isLocked ? 'rgba(56, 189, 248, 0.4)' : 'rgba(239, 68, 68, 0.25)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath();
+      ctx.ellipse(socketX - 10, centerY, 50, socketRadius * 1.05, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /* =======================================================================
+       7. AXIAL / FRONTAL INTERFACE VIEW (Looking Straight into Mainframe Port)
+       ======================================================================= */
+    function renderFrontalView(w, h) {
+      const cx = w * 0.5;
+      const cy = h * 0.5;
+      const baseR = Math.min(w, h) * 0.32;
+
+      // Outer Imperial Mainframe Console Wall
+      ctx.save();
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(cx, cy, baseR * 1.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+
+      // Outer Beveled Machined Ring
+      const rimGrad = ctx.createLinearGradient(cx - baseR, cy - baseR, cx + baseR, cy + baseR);
+      rimGrad.addColorStop(0, '#475569');
+      rimGrad.addColorStop(0.5, '#cbd5e1');
+      rimGrad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = rimGrad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, baseR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Stepped Inner Port Sinking Well
+      ctx.fillStyle = '#020617';
+      ctx.beginPath();
+      ctx.arc(cx, cy, baseR * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Revolving Mainframe Locking Pin Channels
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(mainframeRingsRotation);
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([12, 10]);
+      ctx.beginPath();
+      ctx.arc(0, 0, baseR * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 8 Peripheral Optical Ports
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
+        const px = Math.cos(ang) * baseR * 0.55;
+        const py = Math.sin(ang) * baseR * 0.55;
+
+        ctx.fillStyle = isTransmitting ? (i % 2 === 0 ? '#38bdf8' : '#f59e0b') : '#0369a1';
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+
+      /* -------------------------------------------
+         SCOMP PROBE CROSS-SECTION / FRONT PROFILE
+         ------------------------------------------- */
+      // Scale probe size dynamically based on extension distance into port
+      const currentScale = 0.55 + extensionProgress * 0.45;
+      const probeR = baseR * 0.45 * currentScale;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((bitAngle * Math.PI) / 180);
+
+      // Telescopic Outer Steel Collar
+      const collarGrad = ctx.createLinearGradient(-probeR, -probeR, probeR, probeR);
+      collarGrad.addColorStop(0, '#e2e8f0');
+      collarGrad.addColorStop(0.5, '#64748b');
+      collarGrad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = collarGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, probeR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Rotating Scomp Key Lock Bit (Keyway teeth)
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-probeR * 0.22, -probeR * 0.92, probeR * 0.44, probeR * 1.84);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(-probeR * 0.16, -probeR * 0.85, probeR * 0.32, probeR * 1.7);
+
+      // Fiber-Optic Core
+      ctx.fillStyle = isLocked ? (isTransmitting ? '#fef08a' : '#38bdf8') : '#0284c7';
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = isLocked ? 25 : 6;
+      ctx.beginPath();
+      ctx.arc(0, 0, probeR * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.restore();
+      ctx.restore();
+
+      // Frontal Reticle Overlay
+      ctx.save();
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - baseR * 1.2, cy);
+      ctx.lineTo(cx + baseR * 1.2, cy);
+      ctx.moveTo(cx, cy - baseR * 1.2);
+      ctx.lineTo(cx, cy + baseR * 1.2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Start rendering on window load
+    window.onload = function () {
+      logEvent('Imperial interface link online. Scomp probe ready.');
+      requestAnimationFrame(renderLoop);
+    };
+  </script>
+</body>
+</html>
